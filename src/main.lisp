@@ -17,15 +17,17 @@
 (defun p (x y format-string &rest args)
   (charms:write-string-at-point t (apply #'format nil format-string args) x y))
 
-(defun redraw ()
-  (charms:update))
-
 (defun draw-pages-read ()
   (p 0 0 "Pages read: ~D" *pages-read*))
 
+(defun draw-help ()
+  (p 0 (1- *height*) "[Q]uit"))
+
 (defun draw-screen ()
+  (charms:clear-window t)
   (draw-pages-read)
-  (redraw))
+  (draw-help)
+  (charms:update))
 
 
 ;;;; Main ---------------------------------------------------------------------
@@ -35,7 +37,8 @@
 
 (defun handle-event (event)
   (case event
-    (#\Q (setf *running* nil))))
+    (#\Q (setf *running* nil))
+    (:resize (update-window-size))))
 
 
 (defun handle-events ()
@@ -47,9 +50,10 @@
 
 (defun game-loop ()
   (iterate (while *running*)
-           (draw-screen)
            (handle-events)
+           (draw-screen)
            (sleep 1/30)))
+
 
 (defun run ()
   (initialize)

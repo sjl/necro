@@ -26,7 +26,7 @@ update-deps:
 	hg -R /home/sjl/lib/cl-losh -v pull -u
 	hg -R /home/sjl/lib/chancery -v pull -u
 	hg -R /home/sjl/lib/cl-pcg -v pull -u
-	git -C /home/sjl/lib/cl-charms pull --ff-only origin master
+	git -C /home/sjl/lib/cl-charms pull --ff-only origin dev
 
 /opt/necro/necro: update-deps bin/necro
 	rm -f /opt/necro/necro
