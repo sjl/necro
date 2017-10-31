@@ -26,7 +26,7 @@ update-deps:
 	hg -R /home/sjl/lib/cl-losh -v pull -u
 	hg -R /home/sjl/lib/chancery -v pull -u
 	hg -R /home/sjl/lib/cl-pcg -v pull -u
-	cd /home/sjl/lib/cl-charms && git pull --ff-only origin/master
+	git -C /home/sjl/lib/cl-charms pull --ff-only origin master
 
 /opt/necro/necro: update-deps bin/necro
 	rm -f /opt/necro/necro
@@ -34,5 +34,5 @@ update-deps:
 
 # Local ---------------
 deploy: bin/necro
-	rsync --exclude=bin --exclude=.hg -avz . silt:/home/sjl/src/necro
-	# ssh silt make -C /home/sjl/src/bin/necro /opt/necro/necro
+	rsync --exclude=bin --exclude=.hg -avz . jam:/home/sjl/src/necro
+	ssh jam make -C /home/sjl/src/necro /opt/necro/necro
