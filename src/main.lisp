@@ -1,12 +1,19 @@
 (in-package :necro)
 
+;;;; Parameters ---------------------------------------------------------------
+(defparameter *pages-per-book* 50)
+
+
 ;;;; State --------------------------------------------------------------------
 (defvar *running* nil)
 (defvar *width* 1)
 (defvar *height* 1)
 
-(defvar *pages* nil)
 (defvar *unlocked* nil)
+(defvar *locked* nil)
+
+(defvar *pages* nil)
+(defvar *books* nil)
 
 ;;;; Utilities ----------------------------------------------------------------
 (defun required ()
@@ -28,8 +35,13 @@
    (key :type (or null character) :initform nil)
    (action :type (or null function) :initform nil)))
 
-;;;; Pages --------------------------------------------------------------------
-(defun make-pages-read ()
+
+(defun make-books ()
+  (make-instance 'component
+    :draw (lambda (x y)
+            (p x y "Library: ~D spellbook~:P" (ceiling *books*)))))
+
+(defun make-pages ()
   (make-instance 'component
     :draw (lambda (x y)
             (p x y "Pages read: ~D" *pages*))))
@@ -40,7 +52,9 @@
             (p x y "[ (R)ead page ]"))
     :key #\r
     :action (lambda ()
-              (incf *pages*))))
+              (when (plusp *books*)
+                (incf *pages*)
+                (decf *books* (/ *pages-per-book*))))))
 
 
 ;;;; Drawing ------------------------------------------------------------------
@@ -53,7 +67,7 @@
 (defun draw-screen ()
   (charms:clear-window t)
   (iterate (for component :in *unlocked*)
-           (for y :from 0)
+           (for y :from 0 :by 2)
            (draw-component component 0 y))
   (draw-help)
   (charms:update))
@@ -62,8 +76,10 @@
 ;;;; Main ---------------------------------------------------------------------
 (defun initialize ()
   (setf *pages* 0
+        *books* 1
         *running* t
-        *unlocked* (list (make-pages-read)
+        *unlocked* (list (make-books)
+                         (make-pages)
                          (make-read-page!))))
 
 (defun handle-event (event)
