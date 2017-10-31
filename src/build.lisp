@@ -1,7 +1,7 @@
 (ql:quickload '(:deploy :necro))
 
-;; (deploy:define-library blt:bearlibterminal
-;;   :system :cl-blt)
+(deploy:define-library charms/ll::libcurses
+  :system :cl-charms)
 
 ;; (deploy:define-resource-directory assets "assets/")
 

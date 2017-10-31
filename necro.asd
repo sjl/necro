@@ -5,10 +5,11 @@
 
   :license "MIT/X11"
 
-  :depends-on (
-               :deploy
+  :depends-on (:deploy
                :iterate
-               :losh)
+               :losh
+               :cl-charms
+               )
 
   :defsystem-depends-on (:deploy)
   :build-operation "deploy-op"
