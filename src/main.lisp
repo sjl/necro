@@ -3,6 +3,7 @@
 ;;;; Parameters ---------------------------------------------------------------
 (defparameter *pages-per-book* 50)
 (defparameter *initial-books* 5)
+(defparameter *reading-glasses-cost* 10)
 
 
 ;;;; State --------------------------------------------------------------------
@@ -16,10 +17,13 @@
 (defvar *pages* nil)
 (defvar *books* nil)
 (defvar *current-book* nil)
+(defvar *current-book-pages* nil)
 (defvar *spells* nil)
+(defvar *previous-spell-page* nil)
 (defvar *skeletons* nil)
 (defvar *gold* nil)
 (defvar *message* nil)
+(defvar *has-glasses* nil)
 
 
 ;;;; Utilities ----------------------------------------------------------------
@@ -88,9 +92,7 @@
   (adjective #(noun s)))
 
 (defun update-current-book ()
-  (setf *current-book* (if (plusp *books*)
-                         (format nil "~:(~A~)" (book))
-                         nil)))
+  (setf *current-book* (format nil "~:(~A~)" (book))))
 
 
 ;;;; Unlockables --------------------------------------------------------------
@@ -108,18 +110,39 @@
 (defun learn-spell ()
   (incf *spells*))
 
+(defun learn-spells ()
+  (let* ((since (- *pages* *previous-spell-page*))
+         (learned (truncate since 20)))
+    (when (plusp learned)
+      (incf *spells* learned)
+      (incf *previous-spell-page* (* 20 learned)))))
+
+(defun pop-book ()
+  (if (plusp *books*)
+    (progn (decf *books*)
+           (setf *current-book-pages* *pages-per-book*)
+           (update-current-book))
+    (setf *current-book* nil
+          *current-book-pages* 0)))
+
+(defun add-books (n)
+  (when (plusp n)
+    (incf *books* n)
+    (when (null *current-book*)
+      (pop-book))))
+
 
 (defun can-read-page-p ()
-  (plusp *books*))
+  (plusp *current-book-pages*))
 
-(defun read-page ()
-  (when (can-read-page-p)
-    (incf *pages*)
-    (decf *books* (/ *pages-per-book*))
-    (when (dividesp *pages* 20)
-      (learn-spell))
-    (when (integerp *books*)
-      (update-current-book))))
+(defun read-pages (&optional (pages 1))
+  (let ((actually-read (min pages *current-book-pages*)))
+    (when (plusp actually-read)
+      (incf *pages* actually-read)
+      (decf *current-book-pages* actually-read)
+      (learn-spells)
+      (when (zerop *current-book-pages*)
+        (pop-book)))))
 
 
 ;;;; Spells -------------------------------------------------------------------
@@ -143,7 +166,7 @@
            (books-gained (1+ (random (1+ (truncate power 10)))))
            (gold-gained (random power)))
       (decf *skeletons* skeletons-lost)
-      (incf *books* books-gained)
+      (add-books books-gained)
       (incf *gold* gold-gained)
       (message "~D book~:P looted, ~D gold stolen, ~D skeleton~:P destroyed"
                books-gained
@@ -151,9 +174,22 @@
                skeletons-lost))))
 
 
+;;;; Items --------------------------------------------------------------------
+(defun can-buy-glasses-p ()
+  (>= *gold* *reading-glasses-cost*))
+
+(defun buy-glasses ()
+  (when (can-buy-glasses-p)
+    (decf *gold* *reading-glasses-cost*)
+    (setf *has-glasses* t)
+    (zapf *unlocked* (remove :buy-glasses *unlocked* :key 'component-id))
+    (append *unlocked* (list (make-glasses)))))
+
+
 ;;;; Components ---------------------------------------------------------------
 (defclass* component ()
-  ((draw :type (function (integer integer)) :initform (required))
+  ((id :initform nil)
+   (draw :type (function (integer integer)) :initform (required))
    (key :type (or null character) :initform nil)
    (action :type (or null function) :initform nil)))
 
@@ -167,16 +203,13 @@
                  "nothing"
                  (format nil "~A (~D page~:P left)"
                          *current-book*
-                         (let ((pages (* *pages-per-book* (rem *books* 1))))
-                           (if (zerop pages)
-                             *pages-per-book*
-                             pages)))))
+                         *current-book-pages*)))
             2)))
 
 (defun make-pages ()
   (make-instance 'component
     :draw (lambda (x y)
-            (p x y "Pages read: ~D" *pages*)
+            (p x y "Pages read: ~D" (truncate *pages*))
             1)))
 
 (defun make-spells ()
@@ -199,7 +232,6 @@
             1)))
 
 
-
 (defun make-read-page! ()
   (make-instance 'component
     :draw (lambda (x y)
@@ -207,7 +239,7 @@
                        (p x y "[ (R)ead page ]"))
             1)
     :key #\r
-    :action #'read-page))
+    :action 'read-pages))
 
 (defun make-summon-skeleton! ()
   (make-instance 'component
@@ -227,6 +259,24 @@
     :key #\a
     :action 'attack-town))
 
+(defun make-buy-glasses ()
+  (make-instance 'component
+    :id :buy-glasses
+    :draw (lambda (x y)
+            (bold-when (can-buy-glasses-p)
+                       (p x y "[ (B)uy Reading Glasses (~Dg) ]"
+                          *reading-glasses-cost*))
+            1)
+    :key #\b
+    :action 'buy-glasses))
+
+(defun make-glasses ()
+  (make-instance 'component
+    :id :buy-glasses
+    :draw (lambda (x y)
+            (p x y "Reading Glasses (automatically read 1 page/second)")
+            1)))
+
 
 (defun make-unlockable-spells ()
   (make-unlockable :spells
@@ -245,7 +295,8 @@
   (make-unlockable :spells
                    (lambda () (plusp *gold*))
                    (lambda ()
-                     (list (make-gold)))))
+                     (list (make-gold)
+                           (make-buy-glasses)))))
 
 
 ;;;; Drawing ------------------------------------------------------------------
@@ -269,10 +320,13 @@
 (defun initialize ()
   (setf *pages* 0
         *spells* 0
+        *previous-spell-page* 0
         *skeletons* 0
         *gold* 0
         *books* *initial-books*
+        *has-glasses* nil
         *running* t
+        *current-book-pages* *pages-per-book*
         *message* "Press [q] to quit."
         *unlocked* (list (make-books)
                          (make-pages)
@@ -310,10 +364,16 @@
                    (collect u)))))
 
 
+(defun tick (delta-time)
+  (when *has-glasses*
+    (read-pages (* 1.0 delta-time))))
+
 (defun game-loop ()
   (iterate (while *running*)
            (handle-events)
            (check-unlockables)
+           (timing :real-time :per-iteration-into delta-time)
+           (tick (/ delta-time internal-time-units-per-second))
            (draw-screen)
            (sleep 1/30)))
 
