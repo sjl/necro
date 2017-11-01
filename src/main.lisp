@@ -2,6 +2,7 @@
 
 ;;;; Parameters ---------------------------------------------------------------
 (defparameter *pages-per-book* 50)
+(defparameter *initial-books* 5)
 
 
 ;;;; State --------------------------------------------------------------------
@@ -14,6 +15,7 @@
 
 (defvar *pages* nil)
 (defvar *books* nil)
+(defvar *current-book* nil)
 
 ;;;; Utilities ----------------------------------------------------------------
 (defun required ()
@@ -23,11 +25,27 @@
   (charms:write-string-at-point t (apply #'format nil format-string args) x y))
 
 
-;;;; Input --------------------------------------------------------------------
-(defun update-window-size ()
-  (setf (values *width* *height*)
-        (charms:window-dimensions t)))
+;;;; Book Titles --------------------------------------------------------------
+(chancery:define-string color
+  "red"
+  "black"
+  "brown"
+  "green")
 
+(chancery:define-string noun
+  "plague"
+  "feast"
+  "skeleton"
+  "arts")
+
+(chancery:define-string book
+  ("the" color noun))
+
+(defun update-current-book ()
+  (setf *current-book* (format nil "~:(~A~)"
+                               (if (plusp *books*)
+                                 (book)
+                                 nil))))
 
 ;;;; Components ---------------------------------------------------------------
 (defclass* component ()
@@ -39,22 +57,36 @@
 (defun make-books ()
   (make-instance 'component
     :draw (lambda (x y)
-            (p x y "Library: ~D spellbook~:P" (ceiling *books*)))))
+            (p x y "Library: ~D spellbook~:P" (ceiling *books*))
+            (p x (1+ y) "Currently reading: ~A"
+               (if (null *current-book*)
+                 "nothing"
+                 (format nil "~A (~D page~:P left)"
+                         *current-book*
+                         (let ((pages (* *pages-per-book* (rem *books* 1))))
+                           (if (zerop pages)
+                             *pages-per-book*
+                             pages)))))
+            2)))
 
 (defun make-pages ()
   (make-instance 'component
     :draw (lambda (x y)
-            (p x y "Pages read: ~D" *pages*))))
+            (p x y "Pages read: ~D" *pages*)
+            1)))
 
 (defun make-read-page! ()
   (make-instance 'component
     :draw (lambda (x y)
-            (p x y "[ (R)ead page ]"))
+            (p x y "[ (R)ead page ]")
+            1)
     :key #\r
     :action (lambda ()
               (when (plusp *books*)
                 (incf *pages*)
-                (decf *books* (/ *pages-per-book*))))))
+                (decf *books* (/ *pages-per-book*))
+                (when (integerp *books*)
+                  (update-current-book))))))
 
 
 ;;;; Drawing ------------------------------------------------------------------
@@ -66,9 +98,9 @@
 
 (defun draw-screen ()
   (charms:clear-window t)
-  (iterate (for component :in *unlocked*)
-           (for y :from 0 :by 2)
-           (draw-component component 0 y))
+  (iterate (with y = 0)
+           (for component :in *unlocked*)
+           (incf y (1+ (draw-component component 0 y))))
   (draw-help)
   (charms:update))
 
@@ -76,11 +108,16 @@
 ;;;; Main ---------------------------------------------------------------------
 (defun initialize ()
   (setf *pages* 0
-        *books* 1
+        *books* *initial-books*
         *running* t
         *unlocked* (list (make-books)
                          (make-pages)
-                         (make-read-page!))))
+                         (make-read-page!)))
+  (update-current-book))
+
+(defun update-window-size ()
+  (setf (values *width* *height*)
+        (charms:window-dimensions t)))
 
 (defun handle-event (event)
   (case event

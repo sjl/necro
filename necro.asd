@@ -8,6 +8,7 @@
   :depends-on (:deploy
                :iterate
                :losh
+               :chancery
                :cl-charms
                )
 
