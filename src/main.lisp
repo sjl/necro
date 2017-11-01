@@ -18,6 +18,8 @@
 (defvar *current-book* nil)
 (defvar *spells* nil)
 (defvar *skeletons* nil)
+(defvar *gold* nil)
+(defvar *message* nil)
 
 
 ;;;; Utilities ----------------------------------------------------------------
@@ -41,6 +43,9 @@
 (defun p (x y format-string &rest args)
   (charms:write-string-at-point t (apply #'format nil format-string args) x y))
 
+(defun message (m &rest args)
+  (setf *message* (apply #'format nil m args)))
+
 
 ;;;; Book Titles --------------------------------------------------------------
 (define-string color
@@ -62,6 +67,9 @@
 
 (define-string verb
   "raise"
+  "shatter"
+  "break"
+  "ruin"
   "animate"
   "conjure"
   "ensorcell"
@@ -70,6 +78,7 @@
 (define-string adjective
   "dark"
   "enchantment"
+  "bone"
   "rotting"
   "cadaverous")
 
@@ -123,6 +132,25 @@
     (decf *spells* 1)))
 
 
+;;;; Attacking ----------------------------------------------------------------
+(defun can-attack-town-p ()
+  (plusp *skeletons*))
+
+(defun attack-town ()
+  (when (can-attack-town-p)
+    (let* ((power (+ 1 *skeletons*))
+           (skeletons-lost (ceiling (/ *skeletons* 2)))
+           (books-gained (1+ (random (1+ (truncate power 10)))))
+           (gold-gained (random power)))
+      (decf *skeletons* skeletons-lost)
+      (incf *books* books-gained)
+      (incf *gold* gold-gained)
+      (message "~D book~:P looted, ~D gold stolen, ~D skeleton~:P destroyed"
+               books-gained
+               gold-gained
+               skeletons-lost))))
+
+
 ;;;; Components ---------------------------------------------------------------
 (defclass* component ()
   ((draw :type (function (integer integer)) :initform (required))
@@ -164,6 +192,14 @@
             (p x (1+ y) "~D skeleton~:P" *skeletons*)
             2)))
 
+(defun make-gold ()
+  (make-instance 'component
+    :draw (lambda (x y)
+            (p x y "Treasury: ~D gold" *gold*)
+            1)))
+
+
+
 (defun make-read-page! ()
   (make-instance 'component
     :draw (lambda (x y)
@@ -180,7 +216,17 @@
                        (p x y "[ Summon (S)keleton ]"))
             1)
     :key #\s
-    :action #'summon-skeleton))
+    :action 'summon-skeleton))
+
+(defun make-attack-town! ()
+  (make-instance 'component
+    :draw (lambda (x y)
+            (bold-when (can-attack-town-p)
+                       (p x y "[ (A)ttack Town ]"))
+            1)
+    :key #\a
+    :action 'attack-town))
+
 
 (defun make-unlockable-spells ()
   (make-unlockable :spells
@@ -192,22 +238,30 @@
 (defun make-unlockable-servants ()
   (make-unlockable :servants
                    (lambda () (plusp *skeletons*))
-                   (lambda () (list (make-servants)))))
+                   (lambda () (list (make-servants)
+                                    (make-attack-town!)))))
+
+(defun make-unlockable-gold ()
+  (make-unlockable :spells
+                   (lambda () (plusp *gold*))
+                   (lambda ()
+                     (list (make-gold)))))
 
 
 ;;;; Drawing ------------------------------------------------------------------
 (defun draw-component (c x y)
   (funcall (component-draw c) x y))
 
-(defun draw-help ()
-  (p 0 (1- *height*) "[Q]uit"))
+
+(defun draw-message ()
+  (p 0 (1- *height*) *message*))
 
 (defun draw-screen ()
   (charms:clear-window t)
   (iterate (with y = 0)
            (for component :in *unlocked*)
            (incf y (1+ (draw-component component 0 y))))
-  (draw-help)
+  (draw-message)
   (charms:update))
 
 
@@ -216,13 +270,16 @@
   (setf *pages* 0
         *spells* 0
         *skeletons* 0
+        *gold* 0
         *books* *initial-books*
         *running* t
+        *message* "Press [q] to quit."
         *unlocked* (list (make-books)
                          (make-pages)
                          (make-read-page!))
         *locked* (list (make-unlockable-spells)
-                       (make-unlockable-servants)))
+                       (make-unlockable-servants)
+                       (make-unlockable-gold)))
   (update-current-book))
 
 
@@ -233,7 +290,7 @@
 
 (defun handle-event (event)
   (case event
-    (#\Q (setf *running* nil))
+    (#\q (setf *running* nil))
     (:resize (update-window-size))
     (t (when-let ((component (find event *unlocked* :key #'component-key)))
          (funcall (component-action component))))))
