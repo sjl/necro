@@ -16,6 +16,8 @@
 (defvar *pages* nil)
 (defvar *books* nil)
 (defvar *current-book* nil)
+(defvar *spells* nil)
+
 
 ;;;; Utilities ----------------------------------------------------------------
 (defun required ()
@@ -26,26 +28,68 @@
 
 
 ;;;; Book Titles --------------------------------------------------------------
-(chancery:define-string color
+(define-string color
   "red"
   "black"
   "brown"
   "green")
 
-(chancery:define-string noun
+(define-string noun
   "plague"
+  "prince"
+  "castle"
   "feast"
   "skeleton"
-  "arts")
+  "bloodlust"
+  "art")
 
-(chancery:define-string book
-  ("the" color noun))
+(define-string verb
+  "raise"
+  "animate"
+  "conjure"
+  "ensorcell"
+  "enchant")
+
+(define-string adjective
+  "dark"
+  "enchantment"
+  "rotting"
+  "cadaverous")
+
+(define-string book
+  ("the" color noun)
+  ("how to" verb #(noun a))
+  (adjective #(noun s)))
 
 (defun update-current-book ()
-  (setf *current-book* (format nil "~:(~A~)"
-                               (if (plusp *books*)
-                                 (book)
-                                 nil))))
+  (setf *current-book* (if (plusp *books*)
+                         (format nil "~:(~A~)" (book))
+                         nil)))
+
+
+;;;; Unlockables --------------------------------------------------------------
+(defun make-unlockable (id unlock-p do-unlock)
+  (list id unlock-p do-unlock))
+
+(defun unlockablep (u)
+  (funcall (second u)))
+
+(defun unlock (u)
+  (funcall (third u)))
+
+;;;; Resources ----------------------------------------------------------------
+(defun learn-spell ()
+  (incf *spells*))
+
+(defun read-page ()
+  (when (plusp *books*)
+    (incf *pages*)
+    (decf *books* (/ *pages-per-book*))
+    (when (dividesp *pages* 20)
+      (learn-spell))
+    (when (integerp *books*)
+      (update-current-book))))
+
 
 ;;;; Components ---------------------------------------------------------------
 (defclass* component ()
@@ -75,18 +119,27 @@
             (p x y "Pages read: ~D" *pages*)
             1)))
 
+(defun make-spells ()
+  (make-instance 'component
+    :draw (lambda (x y)
+            (p x y "Spells memorized: ~D" *spells*)
+            1)))
+
 (defun make-read-page! ()
   (make-instance 'component
     :draw (lambda (x y)
+            (charms/ll:attron charms/ll:a_bold)
             (p x y "[ (R)ead page ]")
+            (charms/ll:attroff charms/ll:a_bold)
             1)
     :key #\r
-    :action (lambda ()
-              (when (plusp *books*)
-                (incf *pages*)
-                (decf *books* (/ *pages-per-book*))
-                (when (integerp *books*)
-                  (update-current-book))))))
+    :action #'read-page))
+
+(defun make-unlockable-spells ()
+  (make-unlockable :spells
+                   (lambda () (plusp *spells*))
+                   (lambda ()
+                     (list (make-spells)))))
 
 
 ;;;; Drawing ------------------------------------------------------------------
@@ -108,16 +161,20 @@
 ;;;; Main ---------------------------------------------------------------------
 (defun initialize ()
   (setf *pages* 0
+        *spells* 0
         *books* *initial-books*
         *running* t
         *unlocked* (list (make-books)
                          (make-pages)
-                         (make-read-page!)))
+                         (make-read-page!))
+        *locked* (list (make-unlockable-spells)))
   (update-current-book))
+
 
 (defun update-window-size ()
   (setf (values *width* *height*)
         (charms:window-dimensions t)))
+
 
 (defun handle-event (event)
   (case event
@@ -126,7 +183,6 @@
     (t (when-let ((component (find event *unlocked* :key #'component-key)))
          (funcall (component-action component))))))
 
-
 (defun handle-events ()
   (iterate
     (for event = (charms:get-char t :ignore-error t))
@@ -134,9 +190,18 @@
     (handle-event event)))
 
 
+(defun check-unlockables ()
+  (zapf *locked*
+        (iterate (for u :in %)
+                 (if (unlockablep u)
+                   (setf *unlocked* (append *unlocked* (unlock u)))
+                   (collect u)))))
+
+
 (defun game-loop ()
   (iterate (while *running*)
            (handle-events)
+           (check-unlockables)
            (draw-screen)
            (sleep 1/30)))
 
