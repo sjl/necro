@@ -17,11 +17,26 @@
 (defvar *books* nil)
 (defvar *current-book* nil)
 (defvar *spells* nil)
+(defvar *skeletons* nil)
 
 
 ;;;; Utilities ----------------------------------------------------------------
 (defun required ()
   (error "Required."))
+
+(defmacro bold (&body body)
+  `(unwind-protect
+     (progn
+       (charms/ll:attron charms/ll:a_bold)
+       ,@body)
+     (charms/ll:attroff charms/ll:a_bold)))
+
+(defmacro bold-when (condition &body body)
+  `(unwind-protect
+     (progn
+       (when ,condition (charms/ll:attron charms/ll:a_bold))
+       ,@body)
+     (charms/ll:attroff charms/ll:a_bold)))
 
 (defun p (x y format-string &rest args)
   (charms:write-string-at-point t (apply #'format nil format-string args) x y))
@@ -39,6 +54,8 @@
   "prince"
   "castle"
   "feast"
+  "rite"
+  "winter"
   "skeleton"
   "bloodlust"
   "art")
@@ -77,18 +94,33 @@
 (defun unlock (u)
   (funcall (third u)))
 
+
 ;;;; Resources ----------------------------------------------------------------
 (defun learn-spell ()
   (incf *spells*))
 
+
+(defun can-read-page-p ()
+  (plusp *books*))
+
 (defun read-page ()
-  (when (plusp *books*)
+  (when (can-read-page-p)
     (incf *pages*)
     (decf *books* (/ *pages-per-book*))
     (when (dividesp *pages* 20)
       (learn-spell))
     (when (integerp *books*)
       (update-current-book))))
+
+
+;;;; Spells -------------------------------------------------------------------
+(defun can-summon-skeleton-p ()
+  (plusp *spells*))
+
+(defun summon-skeleton ()
+  (when (can-summon-skeleton-p)
+    (incf *skeletons* 1)
+    (decf *spells* 1)))
 
 
 ;;;; Components ---------------------------------------------------------------
@@ -125,21 +157,42 @@
             (p x y "Spells memorized: ~D" *spells*)
             1)))
 
+(defun make-servants ()
+  (make-instance 'component
+    :draw (lambda (x y)
+            (p x y "SERVANTS:")
+            (p x (1+ y) "~D skeleton~:P" *skeletons*)
+            2)))
+
 (defun make-read-page! ()
   (make-instance 'component
     :draw (lambda (x y)
-            (charms/ll:attron charms/ll:a_bold)
-            (p x y "[ (R)ead page ]")
-            (charms/ll:attroff charms/ll:a_bold)
+            (bold-when (can-read-page-p)
+                       (p x y "[ (R)ead page ]"))
             1)
     :key #\r
     :action #'read-page))
+
+(defun make-summon-skeleton! ()
+  (make-instance 'component
+    :draw (lambda (x y)
+            (bold-when (can-summon-skeleton-p)
+                       (p x y "[ Summon (S)keleton ]"))
+            1)
+    :key #\s
+    :action #'summon-skeleton))
 
 (defun make-unlockable-spells ()
   (make-unlockable :spells
                    (lambda () (plusp *spells*))
                    (lambda ()
-                     (list (make-spells)))))
+                     (list (make-spells)
+                           (make-summon-skeleton!)))))
+
+(defun make-unlockable-servants ()
+  (make-unlockable :servants
+                   (lambda () (plusp *skeletons*))
+                   (lambda () (list (make-servants)))))
 
 
 ;;;; Drawing ------------------------------------------------------------------
@@ -162,12 +215,14 @@
 (defun initialize ()
   (setf *pages* 0
         *spells* 0
+        *skeletons* 0
         *books* *initial-books*
         *running* t
         *unlocked* (list (make-books)
                          (make-pages)
                          (make-read-page!))
-        *locked* (list (make-unlockable-spells)))
+        *locked* (list (make-unlockable-spells)
+                       (make-unlockable-servants)))
   (update-current-book))
 
 
